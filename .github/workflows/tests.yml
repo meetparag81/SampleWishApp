@@ -1,0 +1,20 @@
+name: SampleWishApp Tests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/meetparag81/java-tomcat-selenium:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and test
+        run: |
+          echo "Run Maven/Gradle/Selenium commands here"
