@@ -26,13 +26,18 @@ jobs:
             -p 8080:8080 \
             samplewishapp
 
-      - name: Wait for Tomcat
+      - name: Wait for Tomcat (3 min)
         run: |
-          for i in {1..30}; do
+          echo "Waiting for Tomcat (up to 3 min)..."
+          for i in {1..36}; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              http://localhost:8080/SampleWishApp/Upload.jsp)
-            [ "$STATUS" = "200" ] && break || sleep 5
+              http://localhost:8080/SampleWishApp/Upload.jsp || echo "999")
+            echo "Attempt $i — HTTP $STATUS"
+            [ "$STATUS" = "200" ] && echo "✅ Tomcat ready!" && break
+            sleep 5
           done
+          echo "Final status check:"
+          curl -v http://localhost:8080/SampleWishApp/Upload.jsp || true
 
       - name: Run Selenium Tests
         run: |
