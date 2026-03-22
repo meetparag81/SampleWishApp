@@ -3,18 +3,46 @@ name: SampleWishApp Tests
 on:
   push:
     branches: [ master ]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
-  tests:
+  test:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/meetparag81/java-tomcat-selenium:latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build and test
+      - name: Prepare TestData.xlsx
         run: |
-          echo "Run Maven/Gradle/Selenium commands here"
+          ls -la TestData.xlsx || echo "TestData.xlsx not found in repo"
+
+      - name: Build Docker image
+        run: docker build -t samplewishapp .
+
+      - name: Run Docker container
+        run: |
+          docker run -d --name wishapp-container \
+            -p 8080:8080 \
+            samplewishapp
+
+      - name: Wait for Tomcat
+        run: |
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://localhost:8080/SampleWishApp/Upload.jsp)
+            [ "$STATUS" = "200" ] && break || sleep 5
+          done
+
+      - name: Run Selenium Tests
+        run: |
+          curl -X POST http://localhost:8080/SampleWishApp/TestRunnerServlet \
+            -F "testDataFile=@TestData.xlsx" \
+            --output TestResults.xlsx --fail
+
+      - name: Upload Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xlsx
