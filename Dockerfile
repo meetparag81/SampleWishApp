@@ -1,17 +1,16 @@
-# Use Tomcat 9 with Java 17
+
 FROM tomcat:9.0-jdk17
 
-# ── System deps + Google Chrome ──────────────────────────────────────────────
 RUN apt-get update && apt-get install -y \
-    wget gnupg unzip curl \
- && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
- && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" \
-      > /etc/apt/sources.list.d/google-chrome.list \
+    wget gnupg unzip curl ca-certificates \
+ && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+    | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+ && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] \
+    http://dl.google.com/linux/chrome/deb/ stable main" \
+    > /etc/apt/sources.list.d/google-chrome.list \
  && apt-get update && apt-get install -y google-chrome-stable \
  && rm -rf /var/lib/apt/lists/*
 
-# ── Chrome for Testing ChromeDriver URL (Chrome 115+) ────────────────────────
-# Match ChromeDriver version to the installed Chrome MAJOR version
 RUN CHROME_MAJOR=$(google-chrome --version | awk '{print $3}' | cut -d. -f1) && \
     CHROME_FULL=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${CHROME_MAJOR}") && \
     wget -O /tmp/chromedriver.zip \
@@ -21,23 +20,30 @@ RUN CHROME_MAJOR=$(google-chrome --version | awk '{print $3}' | cut -d. -f1) && 
     chmod +x /usr/local/bin/chromedriver && \
     rm -rf /tmp/chromedriver.zip /tmp/chromedriver_extracted
 
-# ── Copy web resources and Java sources ──────────────────────────────────────
-# Your JSPs, WEB-INF, and all jars (including Apache POI) live under src/main/webapp
-COPY src/main/webapp /opt/app/WebContent
-COPY src             /opt/app/src
+WORKDIR /opt/app
 
-# ── Compile Java source with all jars in WEB-INF/lib on classpath ────────────
-RUN SERVLET_JAR=/usr/local/tomcat/lib/servlet-api.jar && \
-    LIB_DIR=/opt/app/WebContent/WEB-INF/lib && \
-    CP=$(find "$LIB_DIR" -name "*.jar" | tr '\n' ':')${SERVLET_JAR} && \
-    mkdir -p /opt/app/WebContent/WEB-INF/classes && \
-    find /opt/app/src -name "*.java" | xargs javac -cp "$CP" \
-         -d /opt/app/WebContent/WEB-INF/classes
+# Copy web resources (JSP, web.xml, WEB-INF/lib with Selenium + POI jars)
+COPY src/main/webapp/ /opt/app/
 
-# ── Assemble WAR and deploy to Tomcat ────────────────────────────────────────
-RUN cd /opt/app && \
-    jar -cf /usr/local/tomcat/webapps/SampleWishApp.war -C WebContent . && \
-    mkdir -p /usr/local/tomcat/webapps/SampleWishApp/outputs
+# Copy Java sources (com.samplewishapp.* under src/main/java)
+COPY src/main/java/ /opt/app/src/
+
+# Compile all servlets/pages with classpath including WEB-INF/lib and servlet-api
+RUN SERVLET_JAR="/usr/local/tomcat/lib/servlet-api.jar" && \
+    LIB_DIR="/opt/app/WEB-INF/lib" && \
+    CP=$(find "$LIB_DIR" -name "*.jar" | paste -sd: -):"$SERVLET_JAR" && \
+    mkdir -p /opt/app/WEB-INF/classes && \
+    find /opt/app/src -name "*.java" -exec javac -cp "$CP" -d /opt/app/WEB-INF/classes {} + && \
+    rm -rf /opt/app/src
+
+# Deploy compiled classes + jars into Tomcat webapp
+RUN mkdir -p /usr/local/tomcat/webapps/SampleWishApp/WEB-INF/lib && \
+    mkdir -p /usr/local/tomcat/webapps/SampleWishApp/WEB-INF/classes && \
+    mkdir -p /usr/local/tomcat/webapps/SampleWishApp/uploads && \
+    mkdir -p /usr/local/tomcat/webapps/SampleWishApp/outputs && \
+    cp -r /opt/app/WEB-INF/lib/*.jar /usr/local/tomcat/webapps/SampleWishApp/WEB-INF/lib/ && \
+    cp -r /opt/app/WEB-INF/classes/* /usr/local/tomcat/webapps/SampleWishApp/WEB-INF/classes/ && \
+    cp /opt/app/*.jsp /opt/app/*.html /usr/local/tomcat/webapps/SampleWishApp/
 
 EXPOSE 8080
 CMD ["/usr/local/tomcat/bin/catalina.sh", "run"]

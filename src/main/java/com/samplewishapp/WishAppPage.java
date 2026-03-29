@@ -5,6 +5,7 @@ package com.samplewishapp;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.*;
 import java.time.Duration;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class WishAppPage {
 
@@ -21,8 +22,8 @@ public class WishAppPage {
     private By logoutButton   = By.linkText("Logout");
 
     public WishAppPage(WebDriver driver) {
-        this.driver = driver;
-        this.wait = new WebDriverWait(driver, 10);
+        this.driver = driver;        
+        this.wait=new WebDriverWait(driver, Duration.ofSeconds(10));
     }
 
     public void navigateTo(String url) {
