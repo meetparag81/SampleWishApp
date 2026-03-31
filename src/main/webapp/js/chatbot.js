@@ -1,88 +1,152 @@
-
 (function () {
-  const dock = document.createElement('div');
-  dock.id = 'chatbotDock';
-  Object.assign(dock.style, {
-    position: 'fixed',
-    bottom: '20px',
-    right: '20px',
-    width: '280px',
-    background: '#1f2937',
-    color: '#fff',
-    borderRadius: '10px',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-    fontFamily: 'system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans',
-    zIndex: '9999'
-  });
+    const RUNNER_SERVLET = '/SampleWishApp/TestRunnerServlet';
 
-  dock.innerHTML = `
-    <div style="padding:12px; font-weight:600;">Assistant</div>
-    <div id="chatLog" style="height:150px; overflow:auto; background:#111827; padding:10px;"></div>
-    <div style="display:flex; gap:6px; padding:10px;">
-      <input id="chatInput" placeholder="Type here..." style="flex:1; border-radius:6px; border:1px solid #374151; padding:8px; background:#1f2937; color:#fff;" />
-      <button id="chatSend" style="border:none; background:#10b981; color:#031014; padding:8px 10px; border-radius:6px; font-weight:600;">Send</button>
+    // ── Build chatbot UI ──────────────────────────────────────────────
+    const dock = document.createElement('div');
+    dock.id = 'chatbotDock';
+    Object.assign(dock.style, {
+        position: 'fixed', bottom: '20px', right: '20px', width: '320px',
+        background: '#1f2937', color: '#fff', borderRadius: '12px',
+        boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
+        fontFamily: 'system-ui,-apple-system,Segoe UI,Roboto,sans-serif',
+        zIndex: '9999', overflow: 'hidden'
+    });
+
+    dock.innerHTML = `
+    <div id="chatHeader" style="background:#111827;padding:12px 16px;
+         cursor:pointer;display:flex;justify-content:space-between;
+         align-items:center;">
+        <span style="font-weight:700;font-size:15px;">🤖 WishApp Test Bot</span>
+        <span id="chatToggle" style="font-size:18px;">▲</span>
     </div>
-  `;
-  document.body.appendChild(dock);
+    <div id="chatBody" style="display:flex;flex-direction:column;height:360px;">
+        <div id="chatLog" style="flex:1;overflow-y:auto;padding:12px;
+             font-size:13px;line-height:1.6;"></div>
+        <div id="fileRow" style="padding:8px;border-top:1px solid #374151;">
+            <input type="file" id="fileInput" accept=".xlsx"
+                style="width:100%;box-sizing:border-box;color:#d1d5db;
+                font-size:12px;margin-bottom:6px;" />
+            <button id="executeBtn"
+                style="width:100%;padding:9px;background:#2563eb;
+                color:#fff;border:none;border-radius:8px;cursor:pointer;
+                font-weight:600;font-size:13px;">
+                ▶ Execute Tests
+            </button>
+        </div>
+    </div>`;
 
-  const log = document.getElementById('chatLog');
-  const input = document.getElementById('chatInput');
-  const send = document.getElementById('chatSend');
+    document.body.appendChild(dock);
 
-  function addLine(who, text) {
-    const el = document.createElement('div');
-    el.style.margin = '6px 0';
-    el.innerHTML = `<span style="color:#9ca3af">${who}:</span> ${text}`;
-    log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
-  }
+    // ── Collapse / expand ─────────────────────────────────────────────
+    document.getElementById('chatHeader').addEventListener('click', () => {
+        const body   = document.getElementById('chatBody');
+        const tog    = document.getElementById('chatToggle');
+        const hidden = body.style.display === 'none';
+        body.style.display = hidden ? 'flex' : 'none';
+        tog.textContent    = hidden ? '▲' : '▼';
+    });
 
-  async function handleMessage(msg) {
-    addLine('You', msg);
+    // ── Log helpers ───────────────────────────────────────────────────
+    function log(msg, color) {
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-bottom:6px;color:' + (color || '#d1d5db');
+        div.innerHTML = msg;
+        const cl = document.getElementById('chatLog');
+        cl.appendChild(div);
+        cl.scrollTop = cl.scrollHeight;
+    }
+    const logBot  = m => log('<b style="color:#60a5fa">Bot:</b> ' + m);
+    const logUser = m => log('<b style="color:#34d399">You:</b> ' + m);
+    const logInfo = m => log('ℹ️ ' + m, '#9ca3af');
+    const logOk   = m => log('✅ ' + m, '#4ade80');
+    const logErr  = m => log('❌ ' + m, '#f87171');
 
-    if (msg.trim().toLowerCase() === 'hello') {
-      // 1) Trigger existing Home button if present
-      const homeBtn = document.getElementById('homeBtn'); // <-- ensure your page renders a #homeBtn element
-      if (homeBtn && typeof homeBtn.click === 'function') {
-        homeBtn.click();
-      }
+    // ── Greeting ──────────────────────────────────────────────────────
+    logBot('Hi! 👋 Welcome to WishApp Test Bot.');
+    logBot('Please <b>select TestData.xlsx</b> and click <b>Execute Tests</b>.');
 
-      // 2) Try server-side greeting first (if /greet exists)
-      try {
-        const resp = await fetch('./greet', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          addLine('Bot', data.message);
-          return;
+    // ── Execute handler ───────────────────────────────────────────────
+    async function handleExecute() {
+        const fileInput = document.getElementById('fileInput');
+        const execBtn   = document.getElementById('executeBtn');
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            logErr('Please select a TestData.xlsx file first.');
+            return;
         }
-      } catch (_) {
-        // ignore and fallback
-      }
+        const file = fileInput.files[0];
+        if (!file.name.endsWith('.xlsx')) {
+            logErr('Only .xlsx files are supported.');
+            return;
+        }
 
-      // 3) Fallback: client-side greeting using browser time
-      const h = new Date().getHours();
-      const message =
-        h >= 5 && h < 12 ? 'Good morning' :
-        h >= 12 && h < 17 ? 'Good afternoon' :
-        h >= 17 && h < 22 ? 'Good evening' :
-        'Good night';
-      addLine('Bot', message);
-      return;
+        // Lock button during test run
+        execBtn.disabled         = true;
+        execBtn.textContent      = '⏳ Running…';
+        execBtn.style.background = '#374151';
+
+        logUser('📎 ' + file.name + ' selected');
+        logInfo('Uploading to TestRunnerServlet…');
+        logInfo('Selenium tests running — please wait ⏳');
+
+        try {
+            const formData = new FormData();
+            formData.append('testDataFile', file);
+
+            const res = await fetch(RUNNER_SERVLET, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                const html = await res.text();
+                if (html.includes('executed successfully') ||
+                    html.includes('✅')) {
+                    logOk('All tests <b>executed successfully!</b>');
+                } else if (html.includes('error') ||
+                           html.includes('Error')) {
+                    logErr('Tests ran but errors found. Check results file.');
+                } else {
+                    logOk('Tests completed!');
+                }
+
+                logBot('📥 <a href="/SampleWishApp/DownloadServlet"'
+                     + ' target="_blank"'
+                     + ' style="color:#4ade80;font-weight:bold;">'
+                     + 'Download TestResults.xlsx ↗</a>');
+
+                logBot('Run again? <span id="restartBtn"'
+                     + ' style="color:#60a5fa;cursor:pointer;'
+                     + 'text-decoration:underline;">Click here</span>');
+                document.getElementById('restartBtn')
+                        .addEventListener('click', restartBot);
+
+            } else {
+                logErr('TestRunnerServlet returned HTTP ' + res.status);
+                resetBtn();
+            }
+
+        } catch (e) {
+            logErr('Request failed: ' + e.message);
+            resetBtn();
+        }
     }
 
-    addLine('Bot', "Type 'hello' to go Home and see your greeting.");
-  }
+    function resetBtn() {
+        const b          = document.getElementById('executeBtn');
+        b.disabled       = false;
+        b.textContent    = '▶ Execute Tests';
+        b.style.background = '#2563eb';
+    }
 
-  send.addEventListener('click', () => {
-    const msg = input.value;
-    input.value = '';
-    handleMessage(msg);
-  });
+    function restartBot() {
+        document.getElementById('chatLog').innerHTML = '';
+        document.getElementById('fileInput').value  = '';
+        resetBtn();
+        logBot('Ready for another run! 👋');
+        logBot('Select <b>TestData.xlsx</b> and click Execute Tests.');
+    }
 
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') send.click();
-  });
-
-  // Helpful debug:
-  console.log('chatbot.js loaded and widget injected');
+    document.getElementById('executeBtn')
+            .addEventListener('click', handleExecute);
 })();

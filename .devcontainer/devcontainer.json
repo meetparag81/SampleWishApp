@@ -1,0 +1,29 @@
+{
+    "name": "SampleWishApp Tomcat UI",
+
+    "image": "tomcat:9.0-jdk11",
+
+    "forwardPorts": [8080],
+
+    "portsAttributes": {
+        "8080": {
+            "label": "Tomcat 9 - SampleWishApp",
+            "onAutoForward": "openBrowser"
+        }
+    },
+
+    "postCreateCommand": "cp /workspaces/SampleWishApp/SampleWishApp.war /usr/local/tomcat/webapps/ && catalina.sh run",
+
+    "containerEnv": {
+        "GH_TOKEN": "${localEnv:GH_TOKEN}"
+    },
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "vscjava.vscode-java-pack",
+                "redhat.java"
+            ]
+        }
+    }
+}
