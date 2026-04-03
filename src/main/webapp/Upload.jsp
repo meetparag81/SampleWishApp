@@ -46,5 +46,6 @@
             </a>
         <% } %>
     </div>
+<script src="/SampleWishApp/js/chatbot.js"></script>
 </body>
 </html>
