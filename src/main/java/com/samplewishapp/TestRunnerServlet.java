@@ -1,16 +1,16 @@
 package com.samplewishapp;
+
 import javax.servlet.*;
 import javax.servlet.annotation.*;
 import javax.servlet.http.*;
+import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.xssf.usermodel.*;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.*;
-import org.openqa.selenium.support.ui.*;
 import java.io.*;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-
 
 @WebServlet("/TestRunnerServlet")
 @MultipartConfig(maxFileSize = 10485760, maxRequestSize = 10485760)
@@ -32,14 +32,16 @@ public class TestRunnerServlet extends HttpServlet {
              FileOutputStream fos = new FileOutputStream(inputPath)) {
             byte[] buf = new byte[1024];
             int len;
-            while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+            while ((len = is.read(buf)) != -1) {
+                fos.write(buf, 0, len);
+            }
         }
 
         String outputPath = outputDir + "TestResults.xlsx";
 
         try {
             List<Map<String, String>> testCases = readExcel(inputPath);
-            List<Map<String, String>> results    = executeTests(testCases);
+            List<Map<String, String>> results = executeTests(testCases);
             writeResults(outputPath, results);
 
             request.setAttribute("message",
@@ -57,26 +59,45 @@ public class TestRunnerServlet extends HttpServlet {
     // ── Read Excel ───────────────────────────────────────────
     private List<Map<String, String>> readExcel(String path) throws Exception {
         List<Map<String, String>> data = new ArrayList<>();
+
         try (FileInputStream fis = new FileInputStream(path);
              XSSFWorkbook wb = new XSSFWorkbook(fis)) {
 
             XSSFSheet sheet = wb.getSheetAt(0);
-            XSSFRow   hRow  = sheet.getRow(0);
+            if (sheet == null) return data;
+
+            XSSFRow hRow = sheet.getRow(0);
+            if (hRow == null) return data;
+
+            DataFormatter formatter = new DataFormatter();
             List<String> headers = new ArrayList<>();
-            for (int i = 0; i < hRow.getLastCellNum(); i++)
-                headers.add(hRow.getCell(i).getStringCellValue().trim());
+
+            for (int i = 0; i < hRow.getLastCellNum(); i++) {
+                String header = formatter.formatCellValue(hRow.getCell(i)).trim();
+                headers.add(header);
+            }
 
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 XSSFRow row = sheet.getRow(r);
                 if (row == null) continue;
+
                 Map<String, String> map = new LinkedHashMap<>();
+                boolean allBlank = true;
+
                 for (int c = 0; c < headers.size(); c++) {
-                    XSSFCell cell = row.getCell(c);
-                    map.put(headers.get(c), cell != null ? cell.toString() : "");
+                    String value = formatter.formatCellValue(row.getCell(c)).trim();
+                    if (!value.isEmpty()) {
+                        allBlank = false;
+                    }
+                    map.put(headers.get(c), value);
                 }
-                data.add(map);
+
+                if (!allBlank) {
+                    data.add(map);
+                }
             }
         }
+
         return data;
     }
 
@@ -90,12 +111,15 @@ public class TestRunnerServlet extends HttpServlet {
 
         log.info("=== TestRunnerServlet: executeTests() START ===");
         log.info("Total test cases received: " + cases.size());
+        log.info("Total parsed test cases: " + cases.size());
+        for (Map<String, String> tc : cases) {
+            log.info("Parsed row: " + tc.toString());
+        }
 
         try {
-            // ── Step 1: Configure ChromeOptions ───────────────
             ChromeOptions opts = new ChromeOptions();
             opts.addArguments(
-                "--incognito",                  // ✅ ADDED: fresh session, no cookies
+                "--incognito",
                 "--headless",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
@@ -104,7 +128,6 @@ public class TestRunnerServlet extends HttpServlet {
             );
             log.info("ChromeOptions configured: incognito + headless");
 
-            // ── Step 2: Auto-detect Environment ───────────────
             String chromeDriverPath = System.getenv("CHROMEDRIVER_PATH");
             if (chromeDriverPath != null && !chromeDriverPath.isEmpty()) {
                 log.info("Environment: PIPELINE/DOCKER");
@@ -118,7 +141,6 @@ public class TestRunnerServlet extends HttpServlet {
                 System.setProperty("webdriver.chrome.driver", localDriver);
             }
 
-            // ── Step 3: Auto-detect App URL ───────────────────
             String appUrl = System.getenv("APP_URL");
             if (appUrl == null || appUrl.isEmpty()) {
                 appUrl = "http://localhost:6060/SampleWishApp/login.jsp";
@@ -130,12 +152,10 @@ public class TestRunnerServlet extends HttpServlet {
                 log.info("APP_URL from env: " + appUrl);
             }
 
-            // ── Step 4: Launch ChromeDriver ───────────────────
             log.info("Launching ChromeDriver...");
             driver = new ChromeDriver(opts);
             log.info("ChromeDriver launched successfully.");
 
-            // ── Step 5: Loop through each test case ───────────
             for (Map<String, String> tc : cases) {
                 Map<String, String> res = new LinkedHashMap<>(tc);
                 String ts = LocalDateTime.now()
@@ -150,11 +170,9 @@ public class TestRunnerServlet extends HttpServlet {
                     String password = tc.getOrDefault("Password", "");
                     String wishItem = tc.getOrDefault("WishItem", "");
 
-                    // ✅ FIX 1: Clear cookies before EACH test case
                     driver.manage().deleteAllCookies();
                     log.info("[" + testCase + "] Cookies cleared.");
 
-                    // ✅ FIX 2: Navigate to login.jsp fresh
                     log.info("[" + testCase + "] Step 1: Navigating to " + appUrl);
                     WishAppPage page = new WishAppPage(driver);
                     page.navigateTo(appUrl);
@@ -206,12 +224,12 @@ public class TestRunnerServlet extends HttpServlet {
 
     private WebElement getElement(WebDriver d, String type, String val) {
         switch (type.toLowerCase()) {
-            case "id":          return d.findElement(By.id(val));
-            case "name":        return d.findElement(By.name(val));
-            case "xpath":       return d.findElement(By.xpath(val));
-            case "css":         return d.findElement(By.cssSelector(val));
-            case "linktext":    return d.findElement(By.linkText(val));
-            case "classname":   return d.findElement(By.className(val));
+            case "id":        return d.findElement(By.id(val));
+            case "name":      return d.findElement(By.name(val));
+            case "xpath":     return d.findElement(By.xpath(val));
+            case "css":       return d.findElement(By.cssSelector(val));
+            case "linktext":  return d.findElement(By.linkText(val));
+            case "classname": return d.findElement(By.className(val));
             default: throw new IllegalArgumentException("Unknown locator: " + type);
         }
     }
@@ -220,23 +238,27 @@ public class TestRunnerServlet extends HttpServlet {
     private void writeResults(String path, List<Map<String, String>> results) throws Exception {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             XSSFSheet sheet = wb.createSheet("Results");
-            String[] cols = {"TestCase","URL","Action","Status","Timestamp","ErrorMessage"};
+            String[] cols = {"TestCase", "URL", "Action", "Status", "Timestamp", "ErrorMessage"};
 
             XSSFRow hRow = sheet.createRow(0);
-            for (int i = 0; i < cols.length; i++)
+            for (int i = 0; i < cols.length; i++) {
                 hRow.createCell(i).setCellValue(cols[i]);
+            }
 
             int rn = 1;
             for (Map<String, String> r : results) {
                 XSSFRow row = sheet.createRow(rn++);
-                row.createCell(0).setCellValue(r.getOrDefault("TestCase",""));
-                row.createCell(1).setCellValue(r.getOrDefault("URL",""));
-                row.createCell(2).setCellValue(r.getOrDefault("Action",""));
-                row.createCell(3).setCellValue(r.getOrDefault("Status",""));
-                row.createCell(4).setCellValue(r.getOrDefault("Timestamp",""));
-                row.createCell(5).setCellValue(r.getOrDefault("ErrorMessage",""));
+                row.createCell(0).setCellValue(r.getOrDefault("TestCase", ""));
+                row.createCell(1).setCellValue(r.getOrDefault("URL", ""));
+                row.createCell(2).setCellValue(r.getOrDefault("Action", ""));
+                row.createCell(3).setCellValue(r.getOrDefault("Status", ""));
+                row.createCell(4).setCellValue(r.getOrDefault("Timestamp", ""));
+                row.createCell(5).setCellValue(r.getOrDefault("ErrorMessage", ""));
             }
-            for (int i = 0; i < cols.length; i++) sheet.autoSizeColumn(i);
+
+            for (int i = 0; i < cols.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
 
             try (FileOutputStream fos = new FileOutputStream(path)) {
                 wb.write(fos);

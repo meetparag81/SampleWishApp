@@ -54,11 +54,8 @@ public class WishAppPage {
     }
 
     public void logout() {
-        wait.until(ExpectedConditions.elementToBeClickable(logoutButton));
-        // ✅ JS click bypasses chatbot overlay
-        js.executeScript("arguments[0].click();",
-            driver.findElement(logoutButton));
-        // ✅ Wait for login page before next test
+        driver.get("http://localhost:6060/SampleWishApp/LoginServlet?action=logout");
+        System.out.println("After logout URL: " + driver.getCurrentUrl());
         wait.until(ExpectedConditions.visibilityOfElementLocated(usernameField));
     }
 }
