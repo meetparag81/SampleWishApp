@@ -45,7 +45,7 @@ public class TestRunnerServlet extends HttpServlet {
             writeResults(outputPath, results);
 
             request.setAttribute("message",
-                "\u2705 " + results.size() + " test(s) executed successfully!");
+                "\u2705 Test execution completed. Total result row(s): " + results.size());
             request.setAttribute("downloadLink",
                 request.getContextPath() + "/DownloadServlet");
 
@@ -111,114 +111,142 @@ public class TestRunnerServlet extends HttpServlet {
 
         log.info("=== TestRunnerServlet: executeTests() START ===");
         log.info("Total test cases received: " + cases.size());
-        log.info("Total parsed test cases: " + cases.size());
         for (Map<String, String> tc : cases) {
             log.info("Parsed row: " + tc.toString());
         }
 
         try {
             ChromeOptions opts = new ChromeOptions();
-            opts.addArguments(
-                "--incognito",
-                "--headless",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--remote-allow-origins=*"
-            );
-            log.info("ChromeOptions configured: incognito + headless");
+            opts.addArguments("--incognito");
+            opts.addArguments("--headless=new");
+            opts.addArguments("--no-sandbox");
+            opts.addArguments("--disable-dev-shm-usage");
+            opts.addArguments("--disable-gpu");
+            opts.addArguments("--window-size=1920,1080");
+            opts.addArguments("--disable-extensions");
+            log.info("ChromeOptions configured for headless Linux/Windows execution");
 
-            String chromeDriverPath = System.getenv("CHROMEDRIVER_PATH");
-            if (chromeDriverPath != null && !chromeDriverPath.isEmpty()) {
-                log.info("Environment: PIPELINE/DOCKER");
-                log.info("ChromeDriver path from env: " + chromeDriverPath);
-                System.setProperty("webdriver.chrome.driver", chromeDriverPath);
+            String selectedDriverPath = null;
+
+            String envDriver = System.getenv("CHROMEDRIVER_PATH");
+            if (envDriver != null && !envDriver.trim().isEmpty() && new File(envDriver).exists()) {
+                selectedDriverPath = envDriver.trim();
+                log.info("Environment driver found: " + selectedDriverPath);
             } else {
-                String localDriver =
-                    "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
-                log.info("Environment: LOCAL WINDOWS");
-                log.info("ChromeDriver path (local): " + localDriver);
-                System.setProperty("webdriver.chrome.driver", localDriver);
+                String localDriver = "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
+                if (new File(localDriver).exists()) {
+                    selectedDriverPath = localDriver;
+                    log.info("Local Windows driver found: " + selectedDriverPath);
+                } else {
+                    log.info("No valid explicit ChromeDriver path found. Using Selenium Manager fallback.");
+                }
+            }
+
+            if (selectedDriverPath != null) {
+                System.setProperty("webdriver.chrome.driver", selectedDriverPath);
             }
 
             String appUrl = System.getenv("APP_URL");
-            if (appUrl == null || appUrl.isEmpty()) {
+            if (appUrl == null || appUrl.trim().isEmpty()) {
                 appUrl = "http://localhost:6060/SampleWishApp/login.jsp";
-                log.info("APP_URL not set → using local default: " + appUrl);
+                log.info("APP_URL not set -> using local default: " + appUrl);
             } else {
+                appUrl = appUrl.trim();
                 if (!appUrl.endsWith("login.jsp")) {
                     appUrl = appUrl.endsWith("/") ? appUrl + "login.jsp" : appUrl + "/login.jsp";
                 }
-                log.info("APP_URL from env: " + appUrl);
+                log.info("APP_URL resolved as: " + appUrl);
             }
 
             log.info("Launching ChromeDriver...");
             driver = new ChromeDriver(opts);
             log.info("ChromeDriver launched successfully.");
 
+            driver.manage().timeouts().implicitlyWait(java.time.Duration.ofSeconds(5));
+
             for (Map<String, String> tc : cases) {
-                Map<String, String> res = new LinkedHashMap<>(tc);
+                Map<String, String> result = new LinkedHashMap<>(tc);
+                String testCase = tc.getOrDefault("TestCase", "Unknown");
                 String ts = LocalDateTime.now()
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-                res.put("Timestamp", ts);
 
-                String testCase = tc.getOrDefault("TestCase", "Unknown");
-                log.info("--- Running TestCase: " + testCase + " ---");
+                result.put("Timestamp", ts);
+                result.put("URL", appUrl);
+                result.put("Action", "login,addWish,verify");
 
                 try {
                     String username = tc.getOrDefault("Username", "");
                     String password = tc.getOrDefault("Password", "");
                     String wishItem = tc.getOrDefault("WishItem", "");
 
+                    log.info("--- Running TestCase: " + testCase + " ---");
+                    log.info("[" + testCase + "] Username: " + username);
+                    log.info("[" + testCase + "] WishItem: " + wishItem);
+
                     driver.manage().deleteAllCookies();
                     log.info("[" + testCase + "] Cookies cleared.");
 
-                    log.info("[" + testCase + "] Step 1: Navigating to " + appUrl);
                     WishAppPage page = new WishAppPage(driver);
+
+                    log.info("[" + testCase + "] Step 1: Navigate to " + appUrl);
                     page.navigateTo(appUrl);
 
-                    log.info("[" + testCase + "] Step 2: Logging in as: " + username);
+                    log.info("[" + testCase + "] Step 2: Login");
                     page.login(username, password);
 
-                    log.info("[" + testCase + "] Step 3: Adding wish: " + wishItem);
+                    log.info("[" + testCase + "] Step 3: Add wish");
                     page.addWish(wishItem);
 
-                    log.info("[" + testCase + "] Step 4: Verifying wish added...");
+                    log.info("[" + testCase + "] Step 4: Verify wish");
                     boolean verified = page.verifyWish(wishItem);
 
-                    log.info("[" + testCase + "] Step 5: Logging out...");
+                    log.info("[" + testCase + "] Step 5: Logout");
                     page.logout();
 
-                    String status = verified ? "PASS" : "FAIL";
-                    res.put("Status", status);
-                    res.put("URL", appUrl);
-                    res.put("Action", "login,addWish,verify");
-                    res.put("ErrorMessage", verified ? "" :
-                        "Wish '" + wishItem + "' not found after adding");
+                    result.put("Status", verified ? "PASS" : "FAIL");
+                    result.put("ErrorMessage",
+                        verified ? "" : "Wish '" + wishItem + "' not found after adding");
 
-                    log.info("[" + testCase + "] Result: " + status);
+                    log.info("[" + testCase + "] Result: " + result.get("Status"));
 
-                } catch (Exception e) {
-                    res.put("Status", "FAIL");
-                    res.put("URL", appUrl);
-                    res.put("Action", "login,addWish,verify");
-                    res.put("ErrorMessage", e.getMessage());
-                    log.severe("[" + testCase + "] EXCEPTION: " + e.getMessage());
+                } catch (Exception testEx) {
+                    result.put("Status", "FAIL");
+                    result.put("ErrorMessage", testEx.getMessage());
+                    log.severe("[" + testCase + "] EXCEPTION: " + testEx.getMessage());
                     log.severe("[" + testCase + "] Cause: "
-                        + (e.getCause() != null ? e.getCause().toString() : "N/A"));
+                        + (testEx.getCause() != null ? testEx.getCause().toString() : "N/A"));
                 }
-                results.add(res);
+
+                results.add(result);
             }
 
         } catch (Exception e) {
             log.severe("FATAL ERROR in executeTests: " + e.getMessage());
+
+            for (Map<String, String> tc : cases) {
+                Map<String, String> result = new LinkedHashMap<>(tc);
+                String ts = LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                result.put("Timestamp", ts);
+                result.put("URL", "");
+                result.put("Action", "login,addWish,verify");
+                result.put("Status", "FAIL");
+                result.put("ErrorMessage", "FATAL: " + e.getMessage());
+                results.add(result);
+            }
+
         } finally {
             if (driver != null) {
-                driver.quit();
-                log.info("ChromeDriver quit successfully.");
+                try {
+                    driver.quit();
+                    log.info("Browser closed.");
+                } catch (Exception quitEx) {
+                    log.warning("Error while closing browser: " + quitEx.getMessage());
+                }
             }
             log.info("=== TestRunnerServlet: executeTests() END ===");
         }
+
         return results;
     }
 
