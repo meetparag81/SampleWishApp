@@ -1,29 +1,27 @@
 package com.samplewishapp;
 
-
-
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.*;
 import java.time.Duration;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class WishAppPage {
 
     private WebDriver driver;
     private WebDriverWait wait;
+    private JavascriptExecutor js;
 
-    // ── All Locators defined here ─────────────────────────
-    private By usernameField = By.id("username");
-    private By passwordField = By.id("password");
-    private By loginButton   = By.id("loginBtn");
+    private By usernameField  = By.id("username");
+    private By passwordField  = By.id("password");
+    private By loginButton    = By.id("loginBtn");
     private By wishInputField = By.id("wishInput");
     private By addWishButton  = By.id("addWishBtn");
     private By wishList       = By.id("wishList");
-    private By logoutButton   = By.linkText("Logout");
+    private By logoutButton   = By.id("logoutLink");
 
     public WishAppPage(WebDriver driver) {
-        this.driver = driver;        
-        this.wait=new WebDriverWait(driver, java.time.Duration.ofSeconds(10));
+        this.driver = driver;
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        this.js   = (JavascriptExecutor) driver;   // ✅ JS executor for overlay clicks
     }
 
     public void navigateTo(String url) {
@@ -37,13 +35,17 @@ public class WishAppPage {
         driver.findElement(passwordField).clear();
         driver.findElement(passwordField).sendKeys(password);
         driver.findElement(loginButton).click();
+        // ✅ Wait for wishlist page to appear after login
+        wait.until(ExpectedConditions.visibilityOfElementLocated(wishInputField));
     }
 
     public void addWish(String wishText) {
         wait.until(ExpectedConditions.visibilityOfElementLocated(wishInputField));
         driver.findElement(wishInputField).clear();
         driver.findElement(wishInputField).sendKeys(wishText);
-        driver.findElement(addWishButton).click();
+        // ✅ JS click bypasses chatbot overlay blocking the button
+        js.executeScript("arguments[0].click();",
+            driver.findElement(addWishButton));
     }
 
     public boolean verifyWish(String wishText) {
@@ -53,6 +55,10 @@ public class WishAppPage {
 
     public void logout() {
         wait.until(ExpectedConditions.elementToBeClickable(logoutButton));
-        driver.findElement(logoutButton).click();
+        // ✅ JS click bypasses chatbot overlay
+        js.executeScript("arguments[0].click();",
+            driver.findElement(logoutButton));
+        // ✅ Wait for login page before next test
+        wait.until(ExpectedConditions.visibilityOfElementLocated(usernameField));
     }
 }

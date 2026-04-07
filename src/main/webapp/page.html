@@ -1,18 +1,146 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>SampleWishApp</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+    }
+
+    /* ── Top Navigation Bar ── */
+    .navbar {
+      background: #1a1a2e;
+      color: white;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .navbar h1 { font-size: 18px; }
+    .navbar a {
+      color: #aad4f5;
+      text-decoration: none;
+      font-size: 14px;
+      padding: 6px 14px;
+      border: 1px solid #aad4f5;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .navbar a:hover { background: #aad4f5; color: #1a1a2e; }
+
+    /* ── Wishlist Section ── */
+    .wishlist-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      position: relative;   /* ✅ ADDed THIS */
+  z-index: 10;          /* ✅ ADDed THIS */
+    }
+    .wishlist-container h2 {
+      font-size: 20px;
+      color: #1a1a2e;
+      margin-bottom: 20px;
+    }
+    .wish-input-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    #wishInput {
+      flex: 1;
+      padding: 10px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #wishInput:focus { border-color: #0f3460; }
+    #addWishBtn {
+      padding: 10px 20px;
+      background: #0f3460;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #addWishBtn:hover { background: #16213e; }
+    #wishList {
+      list-style: none;
+      padding: 0;
+    }
+    #wishList li {
+      padding: 10px 14px;
+      background: #f8f9ff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #333;
+    }
+    #wishList li::before {
+      content: "⭐ ";
+    }
+    .empty-msg {
+      color: #aaa;
+      font-size: 13px;
+      text-align: center;
+      padding: 20px 0;
+    }
+  </style>
 </head>
 <body>
 
-<h1>Welcome</h1>
+  <!-- ── Navigation Bar ── -->
+  <div class="navbar">
+    <h1>🤖 AI Selenium Test Runner</h1>
+    <a id="logoutLink" href="LoginServlet?action=logout">🚪 Logout</a>
+  </div>
 
-<!-- Home link with id so chatbot can click it -->
-<a id="homeBtn" href="http://localhost/SampleWishApp/Home">Home</a>
+  <!-- ── Wishlist UI (tested by Selenium) ── -->
+  <div class="wishlist-container">
+    <h2>📋 My Wish List</h2>
+    <div class="wish-input-row">
+      <input type="text" id="wishInput" placeholder="Enter a wish item..." />
+      <button id="addWishBtn">➕ Add Wish</button>
+    </div>
+    <ul id="wishList"></ul>
+    <p class="empty-msg" id="emptyMsg">No wishes yet. Add your first wish above!</p>
+  </div>
 
-<!-- Include chatbot script -->
-<script src="/SampleWishApp/js/chatbot.js"></script>
+  <!-- ── Chatbot Script ── -->
+  <script src="/SampleWishApp/js/chatbot.js"></script>
+
+  <!-- ── Wishlist Logic ── -->
+  <script>
+    const wishList  = document.getElementById('wishList');
+    const wishInput = document.getElementById('wishInput');
+    const emptyMsg  = document.getElementById('emptyMsg');
+
+    document.getElementById('addWishBtn').addEventListener('click', addWish);
+    wishInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') addWish();
+    });
+
+    function addWish() {
+      const text = wishInput.value.trim();
+      if (!text) return;
+      const li = document.createElement('li');
+      li.textContent = text;
+      wishList.appendChild(li);
+      wishInput.value = '';
+      emptyMsg.style.display = 'none';
+    }
+  </script>
 
 </body>
 </html>

@@ -10,7 +10,6 @@ import java.io.*;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 
 @WebServlet("/TestRunnerServlet")
@@ -28,7 +27,6 @@ public class TestRunnerServlet extends HttpServlet {
         new File(uploadDir).mkdirs();
         new File(outputDir).mkdirs();
 
-        // Save uploaded Excel file
         String inputPath = uploadDir + "TestData.xlsx";
         try (InputStream is = filePart.getInputStream();
              FileOutputStream fos = new FileOutputStream(inputPath)) {
@@ -45,7 +43,7 @@ public class TestRunnerServlet extends HttpServlet {
             writeResults(outputPath, results);
 
             request.setAttribute("message",
-                "✅ " + results.size() + " test(s) executed successfully!");
+                "\u2705 " + results.size() + " test(s) executed successfully!");
             request.setAttribute("downloadLink",
                 request.getContextPath() + "/DownloadServlet");
 
@@ -82,12 +80,11 @@ public class TestRunnerServlet extends HttpServlet {
         return data;
     }
 
- // ── Execute Selenium Tests ───────────────────────────────
+    // ── Execute Selenium Tests ───────────────────────────────
     private List<Map<String, String>> executeTests(List<Map<String, String>> cases) {
         List<Map<String, String>> results = new ArrayList<>();
         WebDriver driver = null;
 
-        // Logger for server-side debug logs (visible in Tomcat Console/Eclipse)
         java.util.logging.Logger log = java.util.logging.Logger
             .getLogger(TestRunnerServlet.class.getName());
 
@@ -96,47 +93,40 @@ public class TestRunnerServlet extends HttpServlet {
 
         try {
             // ── Step 1: Configure ChromeOptions ───────────────
-            // These arguments enable headless mode for both local and pipeline
             ChromeOptions opts = new ChromeOptions();
             opts.addArguments(
-                "--headless",           // Run without UI window
-                "--no-sandbox",         // Required for Docker/Linux
-                "--disable-dev-shm-usage", // Prevent memory issues in Docker
-                "--disable-gpu",        // Disable GPU (not needed in headless)
-                "--remote-allow-origins=*" // Allow cross-origin requests
+                "--incognito",                  // ✅ ADDED: fresh session, no cookies
+                "--headless",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--remote-allow-origins=*"
             );
-            log.info("ChromeOptions configured: headless, no-sandbox, disable-dev-shm-usage");
+            log.info("ChromeOptions configured: incognito + headless");
 
-            // ── Step 2: Auto-detect Environment (Local vs Pipeline) ──
-            // Check for environment variable CHROMEDRIVER_PATH
-            // In pipeline/Docker: set via tests.yml → env: CHROMEDRIVER_PATH
-            // In local Windows: falls back to hardcoded path below
+            // ── Step 2: Auto-detect Environment ───────────────
             String chromeDriverPath = System.getenv("CHROMEDRIVER_PATH");
             if (chromeDriverPath != null && !chromeDriverPath.isEmpty()) {
-                // PIPELINE / DOCKER mode
                 log.info("Environment: PIPELINE/DOCKER");
                 log.info("ChromeDriver path from env: " + chromeDriverPath);
                 System.setProperty("webdriver.chrome.driver", chromeDriverPath);
             } else {
-                // LOCAL WINDOWS mode
-                // Update this path to match your local chromedriver.exe location
-            	// LOCAL WINDOWS mode
-            	String localDriver = 
-            		    "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
-            	log.info("Environment: LOCAL WINDOWS");
-            	log.info("ChromeDriver path (local): " + localDriver);
-            	System.setProperty("webdriver.chrome.driver", localDriver);
-
+                String localDriver =
+                    "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
+                log.info("Environment: LOCAL WINDOWS");
+                log.info("ChromeDriver path (local): " + localDriver);
+                System.setProperty("webdriver.chrome.driver", localDriver);
             }
 
             // ── Step 3: Auto-detect App URL ───────────────────
-            // In pipeline: APP_URL env variable points to deployed cloud URL
-            // In local: defaults to localhost:6060
             String appUrl = System.getenv("APP_URL");
             if (appUrl == null || appUrl.isEmpty()) {
-                appUrl = "http://localhost:6060/SampleWishApp";
+                appUrl = "http://localhost:6060/SampleWishApp/login.jsp";
                 log.info("APP_URL not set → using local default: " + appUrl);
             } else {
+                if (!appUrl.endsWith("login.jsp")) {
+                    appUrl = appUrl.endsWith("/") ? appUrl + "login.jsp" : appUrl + "/login.jsp";
+                }
                 log.info("APP_URL from env: " + appUrl);
             }
 
@@ -144,8 +134,6 @@ public class TestRunnerServlet extends HttpServlet {
             log.info("Launching ChromeDriver...");
             driver = new ChromeDriver(opts);
             log.info("ChromeDriver launched successfully.");
-
-            WishAppPage page = new WishAppPage(driver);
 
             // ── Step 5: Loop through each test case ───────────
             for (Map<String, String> tc : cases) {
@@ -162,7 +150,13 @@ public class TestRunnerServlet extends HttpServlet {
                     String password = tc.getOrDefault("Password", "");
                     String wishItem = tc.getOrDefault("WishItem", "");
 
+                    // ✅ FIX 1: Clear cookies before EACH test case
+                    driver.manage().deleteAllCookies();
+                    log.info("[" + testCase + "] Cookies cleared.");
+
+                    // ✅ FIX 2: Navigate to login.jsp fresh
                     log.info("[" + testCase + "] Step 1: Navigating to " + appUrl);
+                    WishAppPage page = new WishAppPage(driver);
                     page.navigateTo(appUrl);
 
                     log.info("[" + testCase + "] Step 2: Logging in as: " + username);
@@ -179,28 +173,28 @@ public class TestRunnerServlet extends HttpServlet {
 
                     String status = verified ? "PASS" : "FAIL";
                     res.put("Status", status);
+                    res.put("URL", appUrl);
+                    res.put("Action", "login,addWish,verify");
                     res.put("ErrorMessage", verified ? "" :
                         "Wish '" + wishItem + "' not found after adding");
 
                     log.info("[" + testCase + "] Result: " + status);
 
                 } catch (Exception e) {
-                    // Capture full exception details for debugging
                     res.put("Status", "FAIL");
+                    res.put("URL", appUrl);
+                    res.put("Action", "login,addWish,verify");
                     res.put("ErrorMessage", e.getMessage());
                     log.severe("[" + testCase + "] EXCEPTION: " + e.getMessage());
-                    log.severe("[" + testCase + "] Cause: " 
+                    log.severe("[" + testCase + "] Cause: "
                         + (e.getCause() != null ? e.getCause().toString() : "N/A"));
                 }
                 results.add(res);
             }
 
         } catch (Exception e) {
-            // Top-level exception (e.g. ChromeDriver failed to launch)
             log.severe("FATAL ERROR in executeTests: " + e.getMessage());
-            log.severe("Possible cause: ChromeDriver path wrong or Chrome not installed");
         } finally {
-            // Always quit driver to release browser resources
             if (driver != null) {
                 driver.quit();
                 log.info("ChromeDriver quit successfully.");
@@ -209,8 +203,6 @@ public class TestRunnerServlet extends HttpServlet {
         }
         return results;
     }
-
-
 
     private WebElement getElement(WebDriver d, String type, String val) {
         switch (type.toLowerCase()) {
