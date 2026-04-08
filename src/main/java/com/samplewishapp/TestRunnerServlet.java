@@ -111,11 +111,15 @@ public class TestRunnerServlet extends HttpServlet {
                 log.info("ChromeDriver path from env: " + chromeDriverPath);
                 System.setProperty("webdriver.chrome.driver", chromeDriverPath);
             } else {
-                String localDriver =
-                    "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
-                log.info("Environment: LOCAL WINDOWS");
-                log.info("ChromeDriver path (local): " + localDriver);
-                System.setProperty("webdriver.chrome.driver", localDriver);
+                chromeDriverPath = "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
+                chromeDriverPath = "C:\\Workspace\\SampleWishApp\\drivers\\chromedriver.exe";
+                log.info("No local driver found, using Selenium Manager fallback");
+                // Skip explicit path -- Selenium Manager auto-resolves
+
+} else {
+    log.info("No local driver found, using Selenium Manager fallback");
+    // Do NOT set webdriver.chrome.driver -- let Selenium Manager handle it
+}
             }
 
             // ── Step 3: Auto-detect App URL ───────────────────
